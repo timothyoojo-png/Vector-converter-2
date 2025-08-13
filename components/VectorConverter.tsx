@@ -381,58 +381,96 @@ export default function VectorConverter() {
     }
 
     try {
+      console.log('Starting PDF export process...')
+      
       // Import jsPDF dynamically to avoid build issues
+      console.log('Importing jsPDF...')
       const { jsPDF } = await import('jspdf')
+      console.log('jsPDF imported successfully')
       
       // Create canvas and render SVG
       const canvas = canvasRef.current
-      if (!canvas) return
+      if (!canvas) {
+        console.error('Canvas ref not available')
+        alert('Canvas not available for PDF export')
+        return
+      }
+      
       const ctx = canvas.getContext("2d")
-      if (!ctx) return
+      if (!ctx) {
+        console.error('Canvas context not available')
+        alert('Canvas context not available for PDF export')
+        return
+      }
+      
+      console.log('Canvas and context ready')
 
       const img = new Image()
       const svgBlob = new Blob([currentSVG], { type: "image/svg+xml;charset=utf-8" })
       const url = URL.createObjectURL(svgBlob)
+      console.log('SVG blob created, size:', svgBlob.size)
 
       img.onload = () => {
+        console.log('Image loaded successfully, dimensions:', img.width, 'x', img.height)
+        
         // Set canvas dimensions with good resolution
         const scale = 2
         canvas.width = (img.width || 800) * scale
         canvas.height = (img.height || 600) * scale
+        console.log('Canvas dimensions set to:', canvas.width, 'x', canvas.height)
         
         // Clear canvas and set white background
         ctx.fillStyle = "white"
         ctx.fillRect(0, 0, canvas.width, canvas.height)
+        console.log('Canvas cleared and background set')
         
         // Scale and draw image
         ctx.scale(scale, scale)
         ctx.drawImage(img, 0, 0)
+        console.log('Image drawn to canvas')
         
-        // Convert canvas to data URL
-        const imageDataUrl = canvas.toDataURL('image/png', 1.0)
-        
-        // Create PDF with jsPDF
-        const pdf = new jsPDF({
-          orientation: canvas.width > canvas.height ? 'landscape' : 'portrait',
-          unit: 'px',
-          format: [canvas.width / scale, canvas.height / scale]
-        })
-        
-        // Add the image to PDF
-        pdf.addImage(imageDataUrl, 'PNG', 0, 0, canvas.width / scale, canvas.height / scale)
-        
-        // Save the PDF
-        pdf.save(`${currentFileName}.pdf`)
-        
+        try {
+          // Convert canvas to data URL
+          console.log('Converting canvas to data URL...')
+          const imageDataUrl = canvas.toDataURL('image/png', 1.0)
+          console.log('Canvas converted to data URL, length:', imageDataUrl.length)
+          
+          // Create PDF with jsPDF
+          console.log('Creating PDF with jsPDF...')
+          const pdf = new jsPDF({
+            orientation: canvas.width > canvas.height ? 'landscape' : 'portrait',
+            unit: 'px',
+            format: [canvas.width / scale, canvas.height / scale]
+          })
+          console.log('PDF created, dimensions:', canvas.width / scale, 'x', canvas.height / scale)
+          
+          // Add the image to PDF
+          console.log('Adding image to PDF...')
+          pdf.addImage(imageDataUrl, 'PNG', 0, 0, canvas.width / scale, canvas.height / scale)
+          console.log('Image added to PDF')
+          
+          // Save the PDF
+          console.log('Saving PDF...')
+          pdf.save(`${currentFileName}.pdf`)
+          console.log('PDF saved successfully!')
+          
+          URL.revokeObjectURL(url)
+        } catch (canvasError) {
+          console.error('Canvas to PDF conversion failed:', canvasError)
+          alert(`Canvas conversion failed: ${canvasError}`)
+          URL.revokeObjectURL(url)
+        }
+      }
+      
+      img.onerror = (error) => {
+        console.error('Image loading failed:', error)
+        alert("Failed to load SVG image for PDF export. Please try a different SVG file.")
         URL.revokeObjectURL(url)
       }
       
-      img.onerror = () => {
-        alert("Failed to process SVG for PDF export. Please try a different SVG file.")
-        URL.revokeObjectURL(url)
-      }
-      
+      console.log('Setting image source...')
       img.src = url
+      console.log('Image source set, waiting for load...')
     } catch (error) {
       console.error('PDF export error:', error)
       // Fallback to high-quality PNG if PDF creation fails
