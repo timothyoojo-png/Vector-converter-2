@@ -32,33 +32,69 @@ export default function VectorConverter() {
   useEffect(() => {
     const initPDF = async () => {
       try {
-        // Try to load from CDN first (more reliable for Netlify)
-        if (typeof window !== 'undefined' && window.pdfjsLib) {
-          pdfjsLib = window.pdfjsLib
-          pdfjsLib.GlobalWorkerOptions.workerSrc = '//cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js'
-          return
+        // Wait for the CDN script to load
+        if (typeof window !== 'undefined') {
+          // Check if PDF.js is already loaded from CDN
+          if (window.pdfjsLib) {
+            pdfjsLib = window.pdfjsLib
+            pdfjsLib.GlobalWorkerOptions.workerSrc = '//cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js'
+            console.log('PDF.js loaded from CDN')
+            return
+          }
+          
+          // Wait a bit for CDN script to load
+          let attempts = 0
+          const maxAttempts = 10
+          const checkPDF = () => {
+            if (window.pdfjsLib) {
+              pdfjsLib = window.pdfjsLib
+              pdfjsLib.GlobalWorkerOptions.workerSrc = '//cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js'
+              console.log('PDF.js loaded from CDN after waiting')
+              return
+            }
+            attempts++
+            if (attempts < maxAttempts) {
+              setTimeout(checkPDF, 500)
+            } else {
+              console.log('CDN loading failed, trying npm package')
+              loadFromNPM()
+            }
+          }
+          checkPDF()
         }
-        
-        // Fallback to dynamic import
+      } catch (error) {
+        console.error('Failed to load PDF.js:', error)
+        loadFromNPM()
+      }
+    }
+
+    const loadFromNPM = async () => {
+      try {
         const pdfjs = await import('pdfjs-dist')
         pdfjsLib = pdfjs
         if (pdfjs.version) {
           pdfjsLib.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjs.version}/pdf.worker.min.js`
         }
+        console.log('PDF.js loaded from npm package')
       } catch (error) {
-        console.error('Failed to load PDF.js:', error)
-        // Final fallback - load from CDN
+        console.error('Failed to load PDF.js from npm:', error)
+        // Final fallback - manual CDN loading
         const script = document.createElement('script')
         script.src = '//cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js'
         script.onload = () => {
           if (window.pdfjsLib) {
             pdfjsLib = window.pdfjsLib
             pdfjsLib.GlobalWorkerOptions.workerSrc = '//cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js'
+            console.log('PDF.js loaded from manual CDN script')
           }
+        }
+        script.onerror = () => {
+          console.error('All PDF.js loading methods failed')
         }
         document.head.appendChild(script)
       }
     }
+
     initPDF()
   }, [])
 
@@ -96,22 +132,34 @@ export default function VectorConverter() {
 
   const processPDF = async (file: File) => {
     if (!pdfjsLib) {
-      alert("PDF processing library not loaded. Please refresh the page.")
+      console.error('PDF.js library not loaded')
+      alert("PDF processing library not loaded. Please refresh the page and try again.")
       return
     }
 
     setIsLoading(true)
     try {
+      console.log('Starting PDF processing...')
       const arrayBuffer = await file.arrayBuffer()
+      console.log('File converted to array buffer')
+      
       const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise
+      console.log(`PDF loaded with ${pdf.numPages} pages`)
+      
       const pages: HTMLCanvasElement[] = []
+      const maxPages = Math.min(pdf.numPages, 5)
 
-      for (let pageNum = 1; pageNum <= Math.min(pdf.numPages, 5); pageNum++) {
+      for (let pageNum = 1; pageNum <= maxPages; pageNum++) {
+        console.log(`Processing page ${pageNum}...`)
         const page = await pdf.getPage(pageNum)
         const viewport = page.getViewport({ scale: 1.5 })
         
         const canvas = document.createElement('canvas')
         const context = canvas.getContext('2d')
+        if (!context) {
+          throw new Error(`Failed to get canvas context for page ${pageNum}`)
+        }
+        
         canvas.height = viewport.height
         canvas.width = viewport.width
 
@@ -122,8 +170,10 @@ export default function VectorConverter() {
 
         await page.render(renderContext).promise
         pages.push(canvas)
+        console.log(`Page ${pageNum} processed successfully`)
       }
 
+      console.log(`All ${pages.length} pages processed`)
       setPdfPages(pages)
       setCurrentPage(0)
       setCurrentSVG(null) // PDF doesn't have SVG content
@@ -131,7 +181,21 @@ export default function VectorConverter() {
       setShowExportOptions(true)
     } catch (error) {
       console.error('PDF processing error:', error)
-      alert('Failed to process PDF file. Please try a different file.')
+      let errorMessage = 'Failed to process PDF file. '
+      
+      if (error instanceof Error) {
+        if (error.message.includes('Invalid PDF')) {
+          errorMessage += 'The file appears to be corrupted or not a valid PDF.'
+        } else if (error.message.includes('password')) {
+          errorMessage += 'The PDF may be password protected.'
+        } else if (error.message.includes('size')) {
+          errorMessage += 'The file may be too large or corrupted.'
+        } else {
+          errorMessage += `Error: ${error.message}`
+        }
+      }
+      
+      alert(errorMessage + ' Please try a different file.')
     } finally {
       setIsLoading(false)
     }
