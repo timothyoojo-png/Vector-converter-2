@@ -230,10 +230,18 @@ export default function VectorConverter() {
         
         // Validate SVG content
         if (result.includes('<svg') && result.includes('</svg>')) {
-          setCurrentSVG(result)
+          // Clean up any potential encoding issues
+          const cleanSVG = result
+            .replace(/\]>/g, '') // Remove any "]>"
+            .replace(/<!\[CDATA\[/g, '') // Remove CDATA sections
+            .replace(/\]\]>/g, '') // Remove CDATA endings
+            .trim()
+          
+          setCurrentSVG(cleanSVG)
           setShowPreview(true)
           setShowExportOptions(true)
           console.log('SVG set successfully')
+          console.log('Cleaned SVG preview:', cleanSVG.substring(0, 100) + '...')
         } else {
           console.error('Invalid SVG content')
           alert('The file appears to be corrupted or not a valid SVG file.')
@@ -294,23 +302,48 @@ export default function VectorConverter() {
   }
 
   const downloadFile = (blob: Blob, filename: string) => {
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement("a")
-    a.href = url
-    a.download = filename
-    document.body.appendChild(a)
-    a.click()
-    document.body.removeChild(a)
-    URL.revokeObjectURL(url)
+    console.log('downloadFile called with:', { filename, blobSize: blob.size, blobType: blob.type })
+    try {
+      const url = URL.createObjectURL(blob)
+      console.log('URL created:', url)
+      
+      const a = document.createElement("a")
+      a.href = url
+      a.download = filename
+      a.style.display = 'none'
+      
+      document.body.appendChild(a)
+      console.log('Download link added to DOM')
+      
+      a.click()
+      console.log('Download link clicked')
+      
+      // Clean up
+      setTimeout(() => {
+        document.body.removeChild(a)
+        URL.revokeObjectURL(url)
+        console.log('Cleanup completed')
+      }, 100)
+      
+      console.log('Download initiated for:', filename)
+    } catch (error) {
+      console.error('Download failed:', error)
+      alert(`Download failed: ${error}`)
+    }
   }
 
   const exportAsSVG = () => {
+    console.log('exportAsSVG called')
     if (!currentSVG) {
+      console.error('No SVG content for export')
       alert("SVG export not available for this file type.")
       return
     }
+    console.log('Creating SVG blob...')
     const blob = new Blob([currentSVG], { type: "image/svg+xml" })
+    console.log('SVG blob created, size:', blob.size)
     downloadFile(blob, `${currentFileName}.svg`)
+    console.log('SVG export completed')
   }
 
   const exportAsAI = () => {
@@ -694,9 +727,17 @@ export default function VectorConverter() {
               </div>
 
               <div className="flex justify-center pt-4">
-                <Button onClick={exportSelected} disabled={selectedFormats.length === 0} className="px-8">
+                <Button 
+                  onClick={() => {
+                    console.log('Export button clicked!')
+                    console.log('Selected formats:', selectedFormats)
+                    exportSelected()
+                  }} 
+                  disabled={selectedFormats.length === 0} 
+                  className="px-8"
+                >
                   <Download className="mr-2 h-4 w-4" />
-                  Export Selected Formats
+                  Export Selected Formats ({selectedFormats.length})
                 </Button>
               </div>
             </CardContent>
