@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Badge } from "@/components/ui/badge"
 import { Alert, AlertDescription } from "@/components/ui/alert"
-import { Upload, FileText, ImageIcon, FileImage, Download, FilePdf } from "lucide-react"
+import { Upload, FileText, ImageIcon, FileImage, Download, File } from "lucide-react"
 
 // PDF.js setup
 let pdfjsLib: any = null
@@ -65,7 +65,7 @@ export default function VectorConverter() {
   const allFormats = [
     { id: "svg", label: "SVG", name: "SVG", icon: FileText },
     { id: "ai", label: "AI", name: "AI", icon: ImageIcon },
-    { id: "pdf", label: "PDF", name: "PDF", icon: FileText },
+    { id: "pdf", label: "PDF", name: "PDF", icon: File },
     { id: "png", label: "PNG", name: "PNG", icon: FileImage },
     { id: "jpg", label: "JPG", name: "JPG", icon: FileImage },
   ]
