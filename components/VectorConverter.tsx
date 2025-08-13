@@ -1,13 +1,16 @@
 "use client"
 
 import type React from "react"
-import { useState, useRef } from "react"
+import { useState, useRef, useEffect } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Badge } from "@/components/ui/badge"
 import { Alert, AlertDescription } from "@/components/ui/alert"
-import { Upload, FileText, ImageIcon, FileImage, Download } from "lucide-react"
+import { Upload, FileText, ImageIcon, FileImage, Download, FilePdf } from "lucide-react"
+
+// PDF.js setup
+let pdfjsLib: any = null
 
 export default function VectorConverter() {
   const [currentSVG, setCurrentSVG] = useState<string | null>(null)
@@ -18,9 +21,26 @@ export default function VectorConverter() {
   const [showExportOptions, setShowExportOptions] = useState(false)
   const [selectedFormats, setSelectedFormats] = useState<string[]>([])
   const [isDragOver, setIsDragOver] = useState(false)
+  const [pdfPages, setPdfPages] = useState<HTMLCanvasElement[]>([])
+  const [currentPage, setCurrentPage] = useState(0)
+  const [isLoading, setIsLoading] = useState(false)
 
   const fileInputRef = useRef<HTMLInputElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
+
+  // Initialize PDF.js
+  useEffect(() => {
+    const initPDF = async () => {
+      try {
+        const pdfjs = await import('pdfjs-dist')
+        pdfjsLib = pdfjs
+        pdfjsLib.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjs.version}/pdf.worker.min.js`
+      } catch (error) {
+        console.error('Failed to load PDF.js:', error)
+      }
+    }
+    initPDF()
+  }, [])
 
   const allFormats = [
     { id: "svg", label: "SVG", name: "SVG", icon: FileText },
@@ -54,7 +74,50 @@ export default function VectorConverter() {
     }
   }
 
-  const handleFile = (file: File) => {
+  const processPDF = async (file: File) => {
+    if (!pdfjsLib) {
+      alert("PDF processing library not loaded. Please refresh the page.")
+      return
+    }
+
+    setIsLoading(true)
+    try {
+      const arrayBuffer = await file.arrayBuffer()
+      const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise
+      const pages: HTMLCanvasElement[] = []
+
+      for (let pageNum = 1; pageNum <= Math.min(pdf.numPages, 5); pageNum++) {
+        const page = await pdf.getPage(pageNum)
+        const viewport = page.getViewport({ scale: 1.5 })
+        
+        const canvas = document.createElement('canvas')
+        const context = canvas.getContext('2d')
+        canvas.height = viewport.height
+        canvas.width = viewport.width
+
+        const renderContext = {
+          canvasContext: context,
+          viewport: viewport
+        }
+
+        await page.render(renderContext).promise
+        pages.push(canvas)
+      }
+
+      setPdfPages(pages)
+      setCurrentPage(0)
+      setCurrentSVG(null) // PDF doesn't have SVG content
+      setShowPreview(true)
+      setShowExportOptions(true)
+    } catch (error) {
+      console.error('PDF processing error:', error)
+      alert('Failed to process PDF file. Please try a different file.')
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  const handleFile = async (file: File) => {
     const fileName = file.name.toLowerCase()
     const fileExtension = fileName.split(".").pop()
 
@@ -65,6 +128,8 @@ export default function VectorConverter() {
 
     setCurrentFileName(file.name.replace(/\.(svg|ai|pdf)$/i, ""))
     setCurrentFileType(fileExtension || "")
+    setPdfPages([])
+    setCurrentPage(0)
 
     setFileInfo({
       name: file.name,
@@ -81,6 +146,8 @@ export default function VectorConverter() {
         setShowExportOptions(true)
       }
       reader.readAsText(file)
+    } else if (fileExtension === "pdf") {
+      await processPDF(file)
     } else {
       setCurrentSVG(null)
       setShowPreview(true)
@@ -150,6 +217,17 @@ export default function VectorConverter() {
   }
 
   const exportAsPDF = () => {
+    if (currentFileType === "pdf") {
+      // For PDF files, export the current page as PDF
+      if (pdfPages.length > 0) {
+        const canvas = pdfPages[currentPage]
+        canvas.toBlob((blob) => {
+          if (blob) downloadFile(blob, `${currentFileName}_page${currentPage + 1}.pdf`)
+        }, "application/pdf")
+      }
+      return
+    }
+
     if (!currentSVG) {
       alert("PDF export not available for this file type.")
       return
@@ -178,6 +256,32 @@ export default function VectorConverter() {
   }
 
   const exportAsRaster = (format: "png" | "jpg") => {
+    if (currentFileType === "pdf" && pdfPages.length > 0) {
+      // Export current PDF page as raster
+      const canvas = pdfPages[currentPage]
+      const mimeType = format === "png" ? "image/png" : "image/jpeg"
+      
+      if (format === "jpg") {
+        const tempCanvas = document.createElement('canvas')
+        const tempCtx = tempCanvas.getContext('2d')
+        if (tempCtx) {
+          tempCanvas.width = canvas.width
+          tempCanvas.height = canvas.height
+          tempCtx.fillStyle = "white"
+          tempCtx.fillRect(0, 0, canvas.width, canvas.height)
+          tempCtx.drawImage(canvas, 0, 0)
+          tempCanvas.toBlob((blob) => {
+            if (blob) downloadFile(blob, `${currentFileName}_page${currentPage + 1}.${format}`)
+          }, mimeType, 0.9)
+        }
+      } else {
+        canvas.toBlob((blob) => {
+          if (blob) downloadFile(blob, `${currentFileName}_page${currentPage + 1}.${format}`)
+        }, mimeType, 0.9)
+      }
+      return
+    }
+
     if (!currentSVG) {
       alert(`${format.toUpperCase()} export not available for this file type.`)
       return
@@ -218,6 +322,18 @@ export default function VectorConverter() {
 
   const exportAsPNG = () => exportAsRaster("png")
   const exportAsJPG = () => exportAsRaster("jpg")
+
+  const nextPage = () => {
+    if (currentPage < pdfPages.length - 1) {
+      setCurrentPage(currentPage + 1)
+    }
+  }
+
+  const prevPage = () => {
+    if (currentPage > 0) {
+      setCurrentPage(currentPage - 1)
+    }
+  }
 
   return (
     <div className="min-h-screen bg-background p-6">
@@ -274,6 +390,12 @@ export default function VectorConverter() {
                 <span className="text-sm text-muted-foreground">Type:</span>
                 <Badge variant="secondary">{fileInfo.type}</Badge>
               </div>
+              {currentFileType === "pdf" && pdfPages.length > 0 && (
+                <div className="flex items-center gap-2">
+                  <span className="text-sm text-muted-foreground">Pages:</span>
+                  <Badge variant="secondary">{pdfPages.length}</Badge>
+                </div>
+              )}
             </CardContent>
           </Card>
         )}
@@ -282,11 +404,52 @@ export default function VectorConverter() {
           <Card>
             <CardHeader>
               <CardTitle>Preview</CardTitle>
+              {currentFileType === "pdf" && pdfPages.length > 1 && (
+                <div className="flex items-center gap-2">
+                  <Button 
+                    variant="outline" 
+                    size="sm" 
+                    onClick={prevPage} 
+                    disabled={currentPage === 0}
+                  >
+                    Previous
+                  </Button>
+                  <span className="text-sm text-muted-foreground">
+                    Page {currentPage + 1} of {pdfPages.length}
+                  </span>
+                  <Button 
+                    variant="outline" 
+                    size="sm" 
+                    onClick={nextPage} 
+                    disabled={currentPage === pdfPages.length - 1}
+                  >
+                    Next
+                  </Button>
+                </div>
+              )}
             </CardHeader>
             <CardContent>
               <div className="bg-muted rounded-lg p-4 min-h-[200px] flex items-center justify-center">
-                {currentSVG ? (
+                {isLoading ? (
+                  <div className="text-center">
+                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-2"></div>
+                    <p className="text-muted-foreground">Processing PDF...</p>
+                  </div>
+                ) : currentSVG ? (
                   <div dangerouslySetInnerHTML={{ __html: currentSVG }} className="max-w-full max-h-80" />
+                ) : currentFileType === "pdf" && pdfPages.length > 0 ? (
+                  <div className="text-center">
+                    <div className="mb-2">
+                      <img 
+                        src={pdfPages[currentPage].toDataURL()} 
+                        alt={`Page ${currentPage + 1}`}
+                        className="max-w-full max-h-80 mx-auto border rounded"
+                      />
+                    </div>
+                    <p className="text-sm text-muted-foreground">
+                      PDF Page {currentPage + 1} - Ready for export
+                    </p>
+                  </div>
                 ) : (
                   <p className="text-muted-foreground">
                     {currentFileType.toUpperCase()} file loaded. Preview not available in browser.
@@ -339,8 +502,7 @@ export default function VectorConverter() {
 
         <Alert>
           <AlertDescription>
-            <strong>Note:</strong> AI export creates SVG format due to browser limitations. PDF files are converted to
-            raster formats for export. All exports maintain high quality with customizable dimensions.
+            <strong>Note:</strong> AI export creates SVG format due to browser limitations. PDF files are now fully supported for PNG/JPG export with multi-page navigation. All exports maintain high quality with customizable dimensions.
           </AlertDescription>
         </Alert>
 
