@@ -300,7 +300,7 @@ export default function VectorConverter() {
     downloadFile(blob, `${currentFileName}.ai`)
   }
 
-  const exportAsPDF = () => {
+  const exportAsPDF = async () => {
     if (currentFileType === "pdf") {
       // For PDF files, export the current page as PDF
       if (pdfPages.length > 0) {
@@ -316,27 +316,99 @@ export default function VectorConverter() {
       alert("PDF export not available for this file type.")
       return
     }
-    const canvas = canvasRef.current
-    if (!canvas) return
-    const ctx = canvas.getContext("2d")
-    if (!ctx) return
 
-    const img = new Image()
-    const svgBlob = new Blob([currentSVG], { type: "image/svg+xml;charset=utf-8" })
-    const url = URL.createObjectURL(svgBlob)
+    try {
+      // Import jsPDF dynamically to avoid build issues
+      const { jsPDF } = await import('jspdf')
+      
+      // Create canvas and render SVG
+      const canvas = canvasRef.current
+      if (!canvas) return
+      const ctx = canvas.getContext("2d")
+      if (!ctx) return
 
-    img.onload = () => {
-      canvas.width = img.width || 800
-      canvas.height = img.height || 600
-      ctx.fillStyle = "white"
-      ctx.fillRect(0, 0, canvas.width, canvas.height)
-      ctx.drawImage(img, 0, 0)
-      canvas.toBlob((blob) => {
-        if (blob) downloadFile(blob, `${currentFileName}.pdf`)
-      }, "image/png")
-      URL.revokeObjectURL(url)
+      const img = new Image()
+      const svgBlob = new Blob([currentSVG], { type: "image/svg+xml;charset=utf-8" })
+      const url = URL.createObjectURL(svgBlob)
+
+      img.onload = () => {
+        // Set canvas dimensions with good resolution
+        const scale = 2
+        canvas.width = (img.width || 800) * scale
+        canvas.height = (img.height || 600) * scale
+        
+        // Clear canvas and set white background
+        ctx.fillStyle = "white"
+        ctx.fillRect(0, 0, canvas.width, canvas.height)
+        
+        // Scale and draw image
+        ctx.scale(scale, scale)
+        ctx.drawImage(img, 0, 0)
+        
+        // Convert canvas to data URL
+        const imageDataUrl = canvas.toDataURL('image/png', 1.0)
+        
+        // Create PDF with jsPDF
+        const pdf = new jsPDF({
+          orientation: canvas.width > canvas.height ? 'landscape' : 'portrait',
+          unit: 'px',
+          format: [canvas.width / scale, canvas.height / scale]
+        })
+        
+        // Add the image to PDF
+        pdf.addImage(imageDataUrl, 'PNG', 0, 0, canvas.width / scale, canvas.height / scale)
+        
+        // Save the PDF
+        pdf.save(`${currentFileName}.pdf`)
+        
+        URL.revokeObjectURL(url)
+      }
+      
+      img.onerror = () => {
+        alert("Failed to process SVG for PDF export. Please try a different SVG file.")
+        URL.revokeObjectURL(url)
+      }
+      
+      img.src = url
+    } catch (error) {
+      console.error('PDF export error:', error)
+      // Fallback to high-quality PNG if PDF creation fails
+      try {
+        const canvas = canvasRef.current
+        if (!canvas) return
+        const ctx = canvas.getContext("2d")
+        if (!ctx) return
+
+        const img = new Image()
+        const svgBlob = new Blob([currentSVG], { type: "image/svg+xml;charset=utf-8" })
+        const url = URL.createObjectURL(svgBlob)
+
+        img.onload = () => {
+          const scale = 2
+          canvas.width = (img.width || 800) * scale
+          canvas.height = (img.height || 600) * scale
+          
+          ctx.fillStyle = "white"
+          ctx.fillRect(0, 0, canvas.width, canvas.height)
+          ctx.scale(scale, scale)
+          ctx.drawImage(img, 0, 0)
+          
+          canvas.toBlob((pngBlob) => {
+            if (pngBlob) {
+              downloadFile(pngBlob, `${currentFileName}_highres.png`)
+              alert(`PDF creation failed, but high-resolution PNG exported! You can convert this to PDF using online tools.`)
+            }
+          }, "image/png", 1.0)
+          
+          URL.revokeObjectURL(url)
+        }
+        
+        img.src = url
+      } catch (fallbackError) {
+        console.error('Fallback export also failed:', fallbackError)
+        alert("PDF export failed. Please try a different file or format.")
+      }
     }
-    img.src = url
   }
 
   const exportAsRaster = (format: "png" | "jpg") => {
