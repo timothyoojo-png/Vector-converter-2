@@ -651,7 +651,8 @@ export default function VectorConverter() {
                     </div>
                     <p className="text-sm text-muted-foreground">
                       PDF Page {currentPage + 1} - Ready for export
-                    </div>
+                    </p>
+                  </div>
                 ) : (
                   <p className="text-muted-foreground">
                     {currentFileType.toUpperCase()} file loaded. Preview not available in browser.
