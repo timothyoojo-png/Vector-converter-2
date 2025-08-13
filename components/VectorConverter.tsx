@@ -269,36 +269,50 @@ export default function VectorConverter() {
     setSelectedFormats((prev) => (prev.includes(formatId) ? prev.filter((id) => id !== formatId) : [...prev, formatId]))
   }
 
-  const exportSelected = () => {
+  const exportSelected = async () => {
     console.log('exportSelected called with formats:', selectedFormats)
     
-    selectedFormats.forEach((format) => {
+    // Process formats sequentially to avoid conflicts
+    for (const format of selectedFormats) {
       console.log(`Processing format: ${format}`)
-      switch (format) {
-        case "svg":
-          console.log('Calling exportAsSVG')
-          exportAsSVG()
-          break
-        case "ai":
-          console.log('Calling exportAsAI')
-          exportAsAI()
-          break
-        case "pdf":
-          console.log('Calling exportAsPDF')
-          exportAsPDF()
-          break
-        case "png":
-          console.log('Calling exportAsPNG')
-          exportAsPNG()
-          break
-        case "jpg":
-          console.log('Calling exportAsJPG')
-          exportAsJPG()
-          break
-        default:
-          console.warn(`Unknown format: ${format}`)
+      try {
+        switch (format) {
+          case "svg":
+            console.log('Calling exportAsSVG')
+            exportAsSVG()
+            break
+          case "ai":
+            console.log('Calling exportAsAI')
+            exportAsAI()
+            break
+          case "pdf":
+            console.log('Calling exportAsPDF')
+            await exportAsPDF()
+            break
+          case "png":
+            console.log('Calling exportAsPNG')
+            exportAsPNG()
+            break
+          case "jpg":
+            console.log('Calling exportAsJPG')
+            exportAsJPG()
+            break
+          default:
+            console.warn(`Unknown format: ${format}`)
+        }
+        
+        // Small delay between exports to prevent browser blocking
+        if (selectedFormats.length > 1) {
+          await new Promise(resolve => setTimeout(resolve, 500))
+        }
+        
+      } catch (error) {
+        console.error(`Error exporting ${format}:`, error)
+        alert(`Failed to export ${format.toUpperCase()}: ${error}`)
       }
-    })
+    }
+    
+    console.log('All formats processed')
   }
 
   const downloadFile = (blob: Blob, filename: string) => {
@@ -513,7 +527,10 @@ export default function VectorConverter() {
   }
 
   const exportAsRaster = (format: "png" | "jpg") => {
+    console.log(`exportAsRaster called for ${format}`)
+    
     if (currentFileType === "pdf" && pdfPages.length > 0) {
+      console.log('Processing PDF page for raster export')
       // Export current PDF page as raster
       const canvas = pdfPages[currentPage]
       const mimeType = format === "png" ? "image/png" : "image/jpeg"
@@ -540,40 +557,76 @@ export default function VectorConverter() {
     }
 
     if (!currentSVG) {
+      console.error(`No SVG content for ${format} export`)
       alert(`${format.toUpperCase()} export not available for this file type.`)
       return
     }
+    
+    console.log('Processing SVG for raster export')
     const canvas = canvasRef.current
-    if (!canvas) return
+    if (!canvas) {
+      console.error('Canvas ref not available for raster export')
+      alert('Canvas not available for export')
+      return
+    }
+    
     const ctx = canvas.getContext("2d")
-    if (!ctx) return
+    if (!ctx) {
+      console.error('Canvas context not available for raster export')
+      alert('Canvas context not available for export')
+      return
+    }
 
     const img = new Image()
     const svgBlob = new Blob([currentSVG], { type: "image/svg+xml;charset=utf-8" })
     const url = URL.createObjectURL(svgBlob)
+    console.log('SVG blob created for raster export, size:', svgBlob.size)
 
     img.onload = () => {
+      console.log(`Image loaded for ${format} export, dimensions:`, img.width, 'x', img.height)
+      
       const scale = 2
       canvas.width = (img.width || 800) * scale
       canvas.height = (img.height || 600) * scale
+      console.log(`Canvas dimensions set to: ${canvas.width} x ${canvas.height}`)
+      
       ctx.scale(scale, scale)
 
       if (format === "jpg") {
         ctx.fillStyle = "white"
         ctx.fillRect(0, 0, canvas.width / scale, canvas.height / scale)
+        console.log('White background added for JPG')
       }
+      
       ctx.drawImage(img, 0, 0)
+      console.log('Image drawn to canvas')
 
       const mimeType = format === "png" ? "image/png" : "image/jpeg"
+      console.log(`Converting canvas to ${format}...`)
+      
       canvas.toBlob(
         (blob) => {
-          if (blob) downloadFile(blob, `${currentFileName}.${format}`)
+          if (blob) {
+            console.log(`${format.toUpperCase()} blob created, size:`, blob.size)
+            downloadFile(blob, `${currentFileName}.${format}`)
+          } else {
+            console.error(`Failed to create ${format} blob`)
+            alert(`Failed to create ${format.toUpperCase()} file`)
+          }
         },
         mimeType,
         0.9,
       )
       URL.revokeObjectURL(url)
     }
+    
+    img.onerror = (error) => {
+      console.error(`Image loading failed for ${format} export:`, error)
+      alert(`Failed to load SVG image for ${format.toUpperCase()} export`)
+      URL.revokeObjectURL(url)
+    }
+    
+    console.log(`Setting image source for ${format} export...`)
     img.src = url
   }
 
