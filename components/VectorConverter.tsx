@@ -464,6 +464,8 @@ export default function VectorConverter() {
                         src={pdfPages[currentPage].toDataURL()} 
                         alt={`Page ${currentPage + 1}`}
                         className="max-w-full max-h-80 mx-auto border rounded"
+                        loading="lazy"
+                        decoding="async"
                       />
                     </div>
                     <p className="text-sm text-muted-foreground">
