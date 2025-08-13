@@ -32,11 +32,31 @@ export default function VectorConverter() {
   useEffect(() => {
     const initPDF = async () => {
       try {
+        // Try to load from CDN first (more reliable for Netlify)
+        if (typeof window !== 'undefined' && window.pdfjsLib) {
+          pdfjsLib = window.pdfjsLib
+          pdfjsLib.GlobalWorkerOptions.workerSrc = '//cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js'
+          return
+        }
+        
+        // Fallback to dynamic import
         const pdfjs = await import('pdfjs-dist')
         pdfjsLib = pdfjs
-        pdfjsLib.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjs.version}/pdf.worker.min.js`
+        if (pdfjs.version) {
+          pdfjsLib.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjs.version}/pdf.worker.min.js`
+        }
       } catch (error) {
         console.error('Failed to load PDF.js:', error)
+        // Final fallback - load from CDN
+        const script = document.createElement('script')
+        script.src = '//cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js'
+        script.onload = () => {
+          if (window.pdfjsLib) {
+            pdfjsLib = window.pdfjsLib
+            pdfjsLib.GlobalWorkerOptions.workerSrc = '//cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js'
+          }
+        }
+        document.head.appendChild(script)
       }
     }
     initPDF()
