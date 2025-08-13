@@ -225,9 +225,23 @@ export default function VectorConverter() {
       const reader = new FileReader()
       reader.onload = (e) => {
         const result = e.target?.result as string
-        setCurrentSVG(result)
-        setShowPreview(true)
-        setShowExportOptions(true)
+        console.log('SVG content loaded:', result.substring(0, 200) + '...')
+        console.log('SVG length:', result.length)
+        
+        // Validate SVG content
+        if (result.includes('<svg') && result.includes('</svg>')) {
+          setCurrentSVG(result)
+          setShowPreview(true)
+          setShowExportOptions(true)
+          console.log('SVG set successfully')
+        } else {
+          console.error('Invalid SVG content')
+          alert('The file appears to be corrupted or not a valid SVG file.')
+        }
+      }
+      reader.onerror = () => {
+        console.error('Failed to read SVG file')
+        alert('Failed to read the SVG file. Please try again.')
       }
       reader.readAsText(file)
     } else if (fileExtension === "pdf") {
@@ -248,23 +262,33 @@ export default function VectorConverter() {
   }
 
   const exportSelected = () => {
+    console.log('exportSelected called with formats:', selectedFormats)
+    
     selectedFormats.forEach((format) => {
+      console.log(`Processing format: ${format}`)
       switch (format) {
         case "svg":
+          console.log('Calling exportAsSVG')
           exportAsSVG()
           break
         case "ai":
+          console.log('Calling exportAsAI')
           exportAsAI()
           break
         case "pdf":
+          console.log('Calling exportAsPDF')
           exportAsPDF()
           break
         case "png":
+          console.log('Calling exportAsPNG')
           exportAsPNG()
           break
         case "jpg":
+          console.log('Calling exportAsJPG')
           exportAsJPG()
           break
+        default:
+          console.warn(`Unknown format: ${format}`)
       }
     })
   }
@@ -301,6 +325,11 @@ export default function VectorConverter() {
   }
 
   const exportAsPDF = async () => {
+    console.log('exportAsPDF called')
+    console.log('currentFileType:', currentFileType)
+    console.log('currentSVG exists:', !!currentSVG)
+    console.log('pdfPages length:', pdfPages.length)
+    
     if (currentFileType === "pdf") {
       // For PDF files, export the current page as PDF
       if (pdfPages.length > 0) {
@@ -313,6 +342,7 @@ export default function VectorConverter() {
     }
 
     if (!currentSVG) {
+      console.error('No SVG content available for PDF export')
       alert("PDF export not available for this file type.")
       return
     }
@@ -592,7 +622,22 @@ export default function VectorConverter() {
                     <p className="text-muted-foreground">Processing PDF...</p>
                   </div>
                 ) : currentSVG ? (
-                  <div dangerouslySetInnerHTML={{ __html: currentSVG }} className="max-w-full max-h-80" />
+                  <div className="text-center">
+                    <div className="mb-2">
+                      <div 
+                        dangerouslySetInnerHTML={{ __html: currentSVG }} 
+                        className="max-w-full max-h-80 mx-auto border rounded bg-white"
+                        style={{ 
+                          display: 'inline-block',
+                          minHeight: '200px',
+                          minWidth: '200px'
+                        }}
+                      />
+                    </div>
+                    <p className="text-sm text-muted-foreground">
+                      SVG Preview - Ready for export
+                    </p>
+                  </div>
                 ) : currentFileType === "pdf" && pdfPages.length > 0 ? (
                   <div className="text-center">
                     <div className="mb-2">
@@ -606,8 +651,7 @@ export default function VectorConverter() {
                     </div>
                     <p className="text-sm text-muted-foreground">
                       PDF Page {currentPage + 1} - Ready for export
-                    </p>
-                  </div>
+                    </div>
                 ) : (
                   <p className="text-muted-foreground">
                     {currentFileType.toUpperCase()} file loaded. Preview not available in browser.
